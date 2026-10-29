@@ -14,7 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      orders: {
+        Row: {
+          back_style: string
+          created_at: string
+          files: Json
+          grade: string
+          id: string
+          name: string
+          note: string | null
+          num: string
+          order_number: number
+          patch_num: number
+          patches: Json
+          quote: string | null
+          size: string
+          summary_pdf_path: string | null
+        }
+        Insert: {
+          back_style?: string
+          created_at?: string
+          files?: Json
+          grade: string
+          id?: string
+          name: string
+          note?: string | null
+          num: string
+          order_number?: number
+          patch_num: number
+          patches?: Json
+          quote?: string | null
+          size: string
+          summary_pdf_path?: string | null
+        }
+        Update: {
+          back_style?: string
+          created_at?: string
+          files?: Json
+          grade?: string
+          id?: string
+          name?: string
+          note?: string | null
+          num?: string
+          order_number?: number
+          patch_num?: number
+          patches?: Json
+          quote?: string | null
+          size?: string
+          summary_pdf_path?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
