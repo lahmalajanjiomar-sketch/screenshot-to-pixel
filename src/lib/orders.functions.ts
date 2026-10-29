@@ -5,7 +5,7 @@ import { orderSchema, SLOTS, PATCH_IDS } from "./jacket";
 const BUCKET = "order-files";
 
 const createInput = orderSchema.extend({
-  patches: z.array(z.object({ slot: z.enum(SLOTS), patch: z.enum(PATCH_IDS) })).max(6),
+  patches: z.array(z.object({ slot: z.enum(SLOTS), patch: z.enum(PATCH_IDS), attachmentIndex: z.number().int().min(0).max(14).optional() })).max(6),
   fileNames: z.array(z.string().max(200)).max(15),
 });
 

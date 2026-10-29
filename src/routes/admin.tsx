@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { adminFileLinks, adminListOrders } from "@/lib/orders.functions";
-import { PATCH_LABELS, SIZES, type PatchId } from "@/lib/jacket";
+import { SIZES, type PatchId } from "@/lib/jacket";
 import { countryByCode } from "@/lib/countries";
 
 export const Route = createFileRoute("/admin")({
@@ -142,8 +142,8 @@ function AdminPage() {
               <TableRow><TableCell colSpan={12} className="py-10 text-center text-muted-foreground">No orders yet.</TableCell></TableRow>
             ) : (
               orders.map((o) => {
-                const patches = (o.patches as { slot: string; patch: PatchId }[]) ?? [];
-                const files = (o.files as unknown[]) ?? [];
+                const patches = (o.patches as { slot: string; patch: PatchId; attachmentIndex?: number }[]) ?? [];
+                const files = (o.files as { path: string; name: string }[]) ?? [];
                 return (
                   <TableRow key={o.id}>
                     <TableCell className="font-varsity">{o.order_number}</TableCell>
@@ -155,7 +155,11 @@ function AdminPage() {
                     <TableCell className="font-varsity">{o.sleeve_number}</TableCell>
                     <TableCell>{o.size}</TableCell>
                     <TableCell>{o.grade}</TableCell>
-                    <TableCell className="max-w-56 text-xs">{patches.map((p) => `${p.slot}: ${PATCH_LABELS[p.patch] ?? p.patch}`).join(", ") || "—"} <span className="text-muted-foreground">/ {o.patch_num}</span></TableCell>
+                    <TableCell className="max-w-56 text-xs">{patches.map((p) => {
+                      const location = p.slot === "L1" ? "#5 left sleeve number" : p.slot === "L2" ? "#6 left sleeve patch" : p.slot === "L3" ? "#7 left sleeve patch" : p.slot === "R1" ? "#8 right sleeve flag" : p.slot === "R2" ? "#9 right sleeve patch" : "#10 right sleeve patch";
+                      const file = p.attachmentIndex === undefined ? undefined : files[p.attachmentIndex];
+                      return `${location}${file ? `: ${file.name}` : ""}`;
+                    }).join(", ") || "—"} <span className="text-muted-foreground">/ {o.patch_num}</span></TableCell>
                     <TableCell className="max-w-48 truncate text-xs" dir="auto">{o.note || "—"}</TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" variant="secondary" disabled={busyId === o.id || (!o.summary_pdf_path && !files.length)} onClick={() => download(o.id)}>

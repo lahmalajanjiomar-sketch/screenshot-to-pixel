@@ -9,12 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Jacket3D } from "@/components/jacket/Jacket3D";
-import type { ViewKey } from "@/components/jacket/JacketViews";
-import { PatchArt } from "@/components/jacket/PatchArt";
+import { JacketPhotoView, type JacketPhotoState, type PatchImage, type PhotoViewKey } from "@/components/jacket/JacketPhotoView";
 import {
   ACCEPTED_UPLOADS,
-  PATCH_LABELS,
   SIZES,
   SLOTS,
   canPlace,
@@ -22,7 +19,6 @@ import {
   emptySlots,
   orderSchema,
   trimToLimit,
-  type PatchId,
   type Slot,
   type SlotMap,
 } from "@/lib/jacket";
@@ -49,8 +45,7 @@ export const Route = createFileRoute("/")({
 
 type Upload = { id: string; name: string; thumb: string | null; isPdf: boolean; pdf: Blob | null; status: "converting" | "ready" | "error" };
 
-const TILE_ORDER: PatchId[] = ["num_en", "num_ar", "initials", "name_ar", "quote", "flag", "n09", "redbull", "bmw", "custom", "horse"];
-const VIEWS: ViewKey[] = ["front", "back", "left", "right"];
+const VIEWS: PhotoViewKey[] = ["front", "back", "left", "right"];
 
 const isDisplayableImage = (f: File) => /^image\/(png|jpe?g|webp|gif)$/.test(f.type);
 
@@ -70,18 +65,16 @@ function OrderPage() {
   const [quote, setQuote] = useState("");
   const backStyle = "en" as const;
   const [slots, setSlots] = useState<SlotMap>(emptySlots);
-  const [selected, setSelected] = useState<PatchId | null>(null);
-  const [customUrl, setCustomUrl] = useState<string | null>(null);
+  const [patchImages, setPatchImages] = useState<Partial<Record<Slot, PatchImage>>>({});
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<{ orderNumber: number; url: string } | null>(null);
-  const [tab, setTab] = useState<ViewKey>("front");
+  const [tab, setTab] = useState<PhotoViewKey>("front");
 
-  const customInput = useRef<HTMLInputElement>(null);
   const filesInput = useRef<HTMLInputElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const state = useMemo(() => ({ num, name, initials, quote, customUrl, backStyle, slots, country, sleeveNumber }), [num, name, initials, quote, customUrl, backStyle, slots, country, sleeveNumber]);
+  const state = useMemo<JacketPhotoState>(() => ({ num, name, initials, quote, country, sleeveNumber, patchImages }), [num, name, initials, quote, country, sleeveNumber, patchImages]);
   const placed = countPlaced(slots);
 
   useEffect(() => {
@@ -89,25 +82,86 @@ function OrderPage() {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const placeAt = (slot: Slot) => {
-    if (!selected) {
-      if (slots[slot]) {
-        setSlots((s) => ({ ...s, [slot]: null }));
-        return;
-      }
-      toast(t.selectFirst);
+  const changePatchNum = (n: number) => {
+    setPatchNum(n);
+    const nextSlots = trimToLimit(slots, n);
+    const removed = SLOTS.filter((slot) => slots[slot] && !nextSlots[slot]);
+    removed.forEach((slot) => {
+      const image = patchImages[slot];
+      if (image) URL.revokeObjectURL(image.url);
+    });
+    if (removed.length) {
+      setPatchImages((images) => {
+        const next = { ...images };
+        removed.forEach((slot) => delete next[slot]);
+        return next;
+      });
+      const removedIds = new Set(removed.map((slot) => patchImages[slot]?.uploadId).filter(Boolean));
+      setUploads((items) => items.filter((item) => !removedIds.has(item.id)));
+    }
+    setSlots(nextSlots);
+  };
+
+  const removePatchAt = (slot: Slot) => {
+    const current = patchImages[slot];
+    if (current) URL.revokeObjectURL(current.url);
+    setPatchImages((images) => {
+      const next = { ...images };
+      delete next[slot];
+      return next;
+    });
+    setSlots((currentSlots) => ({ ...currentSlots, [slot]: null }));
+    if (current) setUploads((currentUploads) => currentUploads.filter((upload) => upload.id !== current.uploadId));
+  };
+
+  const uploadPatchAt = async (slot: Slot, file: File) => {
+    const supported = /^image\/(png|jpe?g|webp|gif|heic|heif)$/.test(file.type) || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(file.name);
+    if (!supported) {
+      toast.error("Choose a PNG, JPG, WEBP, GIF, or HEIC image for a patch.");
       return;
     }
     if (!canPlace(slots, slot, patchNum)) {
       toast.error(t.limitReached);
       return;
     }
-    setSlots((s) => ({ ...s, [slot]: selected }));
+    const previous = patchImages[slot];
+    if (previous) removePatchAt(slot);
+    let preview: Blob = file;
+    if (/heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)) {
+      try {
+        const heic2any = (await import("heic2any")).default;
+        const output = await heic2any({ blob: file, toType: "image/jpeg" });
+        preview = (Array.isArray(output) ? output[0] : output) as File;
+      } catch (error) {
+        console.error(error);
+        toast.error("This HEIC patch image could not be opened.");
+        return;
+      }
+    }
+    const id = crypto.randomUUID();
+    const url = URL.createObjectURL(preview);
+    setPatchImages((images) => ({ ...images, [slot]: { uploadId: id, url, fileName: file.name } }));
+    setSlots((currentSlots) => ({ ...currentSlots, [slot]: "custom" }));
+    setUploads((currentUploads) => [...currentUploads, { id, name: file.name, thumb: url, isPdf: false, pdf: null, status: "converting" }]);
+    try {
+      const pdf = await fileToPdf(file);
+      setUploads((currentUploads) => currentUploads.map((upload) => upload.id === id ? { ...upload, pdf, status: "ready" } : upload));
+    } catch (error) {
+      console.error(error);
+      setUploads((currentUploads) => currentUploads.map((upload) => upload.id === id ? { ...upload, status: "error" } : upload));
+    }
   };
 
-  const changePatchNum = (n: number) => {
-    setPatchNum(n);
-    setSlots((s) => trimToLimit(s, n));
+  const removeUpload = (id: string) => {
+    const image = Object.values(patchImages).find((patch) => patch?.uploadId === id);
+    if (image) {
+      const slot = SLOTS.find((key) => patchImages[key]?.uploadId === id);
+      if (slot) removePatchAt(slot);
+      return;
+    }
+    const upload = uploads.find((item) => item.id === id);
+    if (upload?.thumb) URL.revokeObjectURL(upload.thumb);
+    setUploads((currentUploads) => currentUploads.filter((upload) => upload.id !== id));
   };
 
   const addFiles = async (files: FileList | File[]) => {
@@ -128,22 +182,6 @@ function OrderPage() {
         setUploads((u) => u.map((x) => (x.id === id ? { ...x, status: "error" } : x)));
       }
     }
-  };
-
-  const onCustomPatch = async (f: File) => {
-    let display: Blob = f;
-    if (/heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name)) {
-      const heic2any = (await import("heic2any")).default;
-      const out = await heic2any({ blob: f, toType: "image/jpeg" });
-      display = (Array.isArray(out) ? out[0] : out) ?? f;
-    }
-    if (display.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = () => setCustomUrl(reader.result as string);
-      reader.readAsDataURL(display);
-    }
-    setSelected("custom");
-    addFiles([f]);
   };
 
   const submit = async () => {
@@ -167,7 +205,11 @@ function OrderPage() {
     setSubmitting(true);
     try {
       const ready = uploads.filter((u) => u.status === "ready" && u.pdf);
-      const patches = SLOTS.filter((s) => slots[s]).map((s) => ({ slot: s, patch: slots[s]! }));
+      const patches = SLOTS.filter((slot) => slots[slot]).map((slot) => {
+        const image = patchImages[slot];
+        const attachmentIndex = image ? ready.findIndex((upload) => upload.id === image.uploadId) : -1;
+        return { slot, patch: "custom" as const, ...(attachmentIndex >= 0 ? { attachmentIndex } : {}) };
+      });
       const res = await createOrder({ data: { ...parsed.data, patches, fileNames: ready.map((u) => u.name) } });
       const files: { path: string; name: string }[] = [];
       for (let i = 0; i < ready.length; i++) {
@@ -198,6 +240,8 @@ function OrderPage() {
   const [sheetOrder, setSheetOrder] = useState<number | null>(null);
 
   const reset = () => {
+    Object.values(patchImages).forEach((patch) => patch && URL.revokeObjectURL(patch.url));
+    uploads.forEach((upload) => upload.thumb && !Object.values(patchImages).some((patch) => patch?.url === upload.thumb) && URL.revokeObjectURL(upload.thumb));
     setDone(null);
     setNum("");
     setInitials("");
@@ -211,13 +255,12 @@ function OrderPage() {
     setNote("");
     setQuote("");
     setSlots(emptySlots());
-    setSelected(null);
-    setCustomUrl(null);
+    setPatchImages({});
     setUploads([]);
     setSheetOrder(null);
   };
 
-  const viewLabel = (v: ViewKey) => t[v];
+  const viewLabel = (v: PhotoViewKey) => t[v];
 
   if (done) {
     return (
@@ -259,15 +302,15 @@ function OrderPage() {
         {/* PREVIEW */}
         <section className="lg:sticky lg:top-6 lg:self-start">
           <div className="overflow-hidden rounded-3xl border bg-card shadow-xl">
-            <div className="flex aspect-[4/3] items-center justify-center bg-[#f7f6f3]">
-              <Jacket3D view={tab} state={state} />
+            <div className="p-3 sm:p-5">
+              <JacketPhotoView view={tab} state={state} onPatchUpload={uploadPatchAt} onPatchRemove={removePatchAt} onFieldFocus={(id) => document.getElementById(id)?.focus()} />
             </div>
             <div className="grid grid-cols-4 gap-2 p-3">
               {VIEWS.map((v) => (
                 <button key={v} type="button" onClick={() => setTab(v)} className={cn("rounded-lg border px-2 py-2 text-xs font-semibold", tab === v ? "border-primary bg-primary text-primary-foreground" : "bg-secondary")}>{viewLabel(v)}</button>
               ))}
             </div>
-            <p className="pb-3 text-center text-xs text-muted-foreground">Drag to rotate · scroll to zoom</p>
+            <p className="pb-3 text-center text-xs text-muted-foreground">Select a sleeve hotspot to upload or replace its patch.</p>
           </div>
         </section>
 
@@ -275,91 +318,24 @@ function OrderPage() {
         <section className="space-y-8">
           <div>
             <div className="flex items-baseline justify-between">
-              <h2 className="text-lg font-bold">{t.patches}</h2>
+              <h2 className="text-lg font-bold">Sleeve patch locations</h2>
               <span className={cn("text-sm tabular-nums", placed >= patchNum ? "text-primary" : "text-muted-foreground")}>
                 {placed}/{patchNum} {t.placed}
               </span>
             </div>
-            <p className="mb-3 text-sm text-muted-foreground">{t.tapTile}</p>
-            <div className="grid grid-cols-2 gap-3">
-              {TILE_ORDER.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-label={PATCH_LABELS[id]}
-                  aria-pressed={selected === id}
-                  onClick={() => {
-                    if (!["redbull", "bmw", "custom", "horse"].includes(id)) {
-                      const fieldId: Partial<Record<PatchId, string>> = { initials: "initials", name_ar: "name", quote: "quote", flag: "country-search", n09: "sleeve-number" };
-                      if (fieldId[id]) document.getElementById(fieldId[id]!)?.focus();
-                      return;
-                    }
-                    if (id === "custom" && !customUrl) {
-                      customInput.current?.click();
-                      return;
-                    }
-                    setSelected(selected === id ? null : id);
-                  }}
-                  onDoubleClick={() => id === "custom" && customInput.current?.click()}
-                  className={cn("patch-tile h-24 p-3 text-[18px] sm:h-28", id === "quote" && "col-span-2", selected === id && "tile-selected")}
-                >
-                  <PatchArt id={id} ctx={state} />
-                </button>
-              ))}
-            </div>
-            {customUrl && (
-              <button className="mt-2 text-xs text-muted-foreground underline" onClick={() => customInput.current?.click()}>
-                Replace custom patch image
-              </button>
-            )}
-            <input
-              ref={customInput}
-              type="file"
-              accept={ACCEPTED_UPLOADS.replace(",.pdf", "").replace(",application/pdf", "")}
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onCustomPatch(f);
-                e.target.value = "";
-              }}
-            />
-
-            <p className="mt-5 mb-2 text-sm font-semibold">{t.placeOn}</p>
-            <div className="grid grid-cols-2 gap-3">
-              {(["L", "R"] as const).map((side) => (
-                <div key={side} className="space-y-2">
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground">{side === "L" ? t.left : t.right}</p>
-                  {[1, 2, 3].map((n) => {
-                    const s = `${side}${n}` as Slot;
-                    const p = slots[s];
-                    return (
-                      <div key={s} className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => placeAt(s)}
-                          className={cn(
-                            "flex h-12 min-w-0 flex-1 items-center gap-2 rounded-xl border bg-secondary px-3 text-left text-sm transition-colors hover:border-primary",
-                            p && "border-primary/50",
-                          )}
-                        >
-                          <span className="font-varsity text-primary">{n}</span>
-                          {p ? (
-                            <span className="h-8 w-10 shrink-0 rounded-md bg-jacket-body p-0.5 text-[10px]">
-                              <PatchArt id={p} ctx={state} onJacket />
-                            </span>
-                          ) : null}
-                          <span className="truncate text-muted-foreground">{p ? PATCH_LABELS[p] : "—"}</span>
-                        </button>
-                        {p && (
-                          <button type="button" aria-label={t.remove} onClick={() => setSlots((x) => ({ ...x, [s]: null }))} className="shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+            <p className="mb-3 text-sm text-muted-foreground">Click locations 5–10 on the jacket photo to upload patches. Locations 1–4 focus their matching fields.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {SLOTS.map((slot) => {
+                const spotNumber = slot === "L1" ? 5 : slot === "L2" ? 6 : slot === "L3" ? 7 : slot === "R1" ? 8 : slot === "R2" ? 9 : 10;
+                const patch = patchImages[slot];
+                return (
+                  <div key={slot} className="flex min-w-0 items-center gap-3 rounded-xl border bg-secondary px-3 py-2 text-sm">
+                    <span className="font-varsity text-primary">{spotNumber}</span>
+                    <span className="min-w-0 flex-1 truncate">{patch?.fileName ?? "No patch uploaded"}</span>
+                    {patch && <button type="button" aria-label={`Remove patch ${spotNumber}`} onClick={() => removePatchAt(slot)} className="rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="h-4 w-4" /></button>}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -493,7 +469,7 @@ function OrderPage() {
                       {u.status === "ready" && <Badge className="mt-0.5">{u.isPdf ? t.keptPdf : t.converted}</Badge>}
                       {u.status === "error" && <Badge variant="destructive" className="mt-0.5">{t.failed}</Badge>}
                     </div>
-                    <button type="button" aria-label={t.remove} onClick={() => setUploads((x) => x.filter((y) => y.id !== u.id))} className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
+                    <button type="button" aria-label={t.remove} onClick={() => removeUpload(u.id)} className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
                       <X className="h-4 w-4" />
                     </button>
                   </li>
@@ -520,7 +496,7 @@ function OrderPage() {
           <div className="mt-6 grid grid-cols-4 items-center gap-4">
             {VIEWS.map((v) => (
               <div key={v} className="text-center">
-                <div className="flex h-56 items-center justify-center rounded-xl bg-[#f7f6f3]"><Jacket3D view={v} state={state} /></div>
+                <div className="flex h-64 items-center justify-center rounded-xl bg-[#f7f6f3]"><JacketPhotoView view={v} state={state} onPatchUpload={uploadPatchAt} onPatchRemove={removePatchAt} onFieldFocus={() => {}} interactive={false} /></div>
                 <p className="mt-2 text-sm font-semibold uppercase tracking-widest">{dict.en[v]}</p>
               </div>
             ))}
@@ -548,15 +524,13 @@ function OrderPage() {
               </tbody>
             </table>
             <div>
-              <p className="mb-2 font-bold">PATCHES</p>
-              <div className="grid grid-cols-3 gap-3">
-                {SLOTS.map((s) => (
-                  <div key={s} className="text-center">
-                    <div className="h-20 rounded-lg bg-jacket-body p-2 text-[14px]">{slots[s] && <PatchArt id={slots[s]!} ctx={state} onJacket />}</div>
-                    <p className="mt-1 text-xs">{s.startsWith("L") ? "Left" : "Right"} {s[1]} · {slots[s] ? PATCH_LABELS[slots[s]!] : "empty"}</p>
-                  </div>
-                ))}
-              </div>
+              <p className="mb-2 font-bold">SLEEVE PATCHES</p>
+              <ul className="space-y-1 text-sm">
+                {SLOTS.map((slot) => {
+                  const number = slot === "L1" ? 5 : slot === "L2" ? 6 : slot === "L3" ? 7 : slot === "R1" ? 8 : slot === "R2" ? 9 : 10;
+                  return <li key={slot}>#{number} · {patchImages[slot]?.fileName ?? "empty"}</li>;
+                })}
+              </ul>
               <p className="mt-4 text-sm">Attached files: {uploads.filter((u) => u.status === "ready").length}</p>
             </div>
           </div>
