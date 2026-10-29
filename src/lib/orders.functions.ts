@@ -72,7 +72,7 @@ export const finalizeOrder = createServerFn({ method: "POST" })
   });
 
 function checkPassword(pw: string) {
-  const expected = process.env.ADMIN_PASSWORD;
+  const expected = process.env['ADMIN_PASSWORD'];
   if (!expected) throw new Error("Admin password is not set up yet");
   if (pw !== expected) throw new Error("Wrong password");
 }

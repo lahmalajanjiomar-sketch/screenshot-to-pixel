@@ -128,7 +128,7 @@ function OrderPage() {
     if (/heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name)) {
       const heic2any = (await import("heic2any")).default;
       const out = await heic2any({ blob: f, toType: "image/jpeg" });
-      display = Array.isArray(out) ? out[0] : out;
+      display = (Array.isArray(out) ? out[0] : out) ?? f;
     }
     if (display.type.startsWith("image/")) {
       const reader = new FileReader();
@@ -160,17 +160,18 @@ function OrderPage() {
       const res = await createOrder({ data: { ...parsed.data, patches, fileNames: ready.map((u) => u.name) } });
       const files: { path: string; name: string }[] = [];
       for (let i = 0; i < ready.length; i++) {
-        const up = res.uploads[i];
-        const { error } = await supabase.storage.from("order-files").uploadToSignedUrl(up.path, up.token, ready[i].pdf!, { contentType: "application/pdf" });
+        const up = res.uploads[i]!;
+        const item = ready[i]!;
+        const { error } = await supabase.storage.from("order-files").uploadToSignedUrl(up.path, up.token, item.pdf!, { contentType: "application/pdf" });
         if (error) throw error;
-        files.push({ path: up.path, name: ready[i].name });
+        files.push({ path: up.path, name: item.name });
       }
       // summary sheet
       setSheetOrder(res.orderNumber);
       await new Promise((r) => setTimeout(r, 80));
       const png = await toPng(sheetRef.current!, { pixelRatio: 2, cacheBust: true });
       const summary = await buildSummaryPdf(png, ready.map((u) => u.pdf!));
-      const sumSlot = res.uploads[res.uploads.length - 1];
+      const sumSlot = res.uploads[res.uploads.length - 1]!;
       const { error: sErr } = await supabase.storage.from("order-files").uploadToSignedUrl(sumSlot.path, sumSlot.token, summary, { contentType: "application/pdf" });
       if (sErr) throw sErr;
       await finalizeOrder({ data: { id: res.id, files, summaryPath: sumSlot.path } });

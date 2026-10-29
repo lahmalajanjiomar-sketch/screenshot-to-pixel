@@ -73,7 +73,7 @@ export function JacketView({
   view: ViewKey;
   state: JacketState;
   activeSlot?: Slot | null;
-  onSlotClick?: (s: Slot) => void;
+  onSlotClick?: ((s: Slot) => void) | undefined;
   className?: string;
 }) {
   const num = state.num || "27";

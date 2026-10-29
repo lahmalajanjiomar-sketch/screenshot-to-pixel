@@ -44,4 +44,5 @@ export function PatchArt({ id, ctx, onJacket = false, className }: { id: PatchId
         <div className={cn(wrap, ink, "opacity-60")}><Lock className="h-[1.8em] w-[1.8em]" strokeWidth={1.4} /></div>
       );
   }
+  return null;
 }

@@ -9,7 +9,7 @@ async function blobToPngOrJpeg(file: Blob, name: string): Promise<{ bytes: Array
   if (lower.endsWith(".heic") || lower.endsWith(".heif") || /heic|heif/.test(file.type)) {
     const heic2any = (await import("heic2any")).default;
     const out = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
-    blob = Array.isArray(out) ? out[0] : out;
+    blob = (Array.isArray(out) ? out[0] : out) ?? file;
   }
   if (blob.type === "image/png") return { bytes: await blob.arrayBuffer(), kind: "png" };
   if (blob.type === "image/jpeg") return { bytes: await blob.arrayBuffer(), kind: "jpg" };
