@@ -137,7 +137,7 @@ function AdminPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={12} className="py-10 text-center"><Loader2 className="mx-auto animate-spin" /></TableRow>
+              <TableRow><TableCell colSpan={12} className="py-10 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
             ) : orders.length === 0 ? (
               <TableRow><TableCell colSpan={12} className="py-10 text-center text-muted-foreground">No orders yet.</TableCell></TableRow>
             ) : (
