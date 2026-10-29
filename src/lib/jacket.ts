@@ -59,7 +59,7 @@ export function trimToLimit(slots: SlotMap, limit: number): SlotMap {
 }
 
 const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩";
-export const toArabicDigits = (s: string) => s.replace(/[0-9]/g, (d) => AR_DIGITS[Number(d)]);
+export const toArabicDigits = (s: string) => s.replace(/[0-9]/g, (d) => AR_DIGITS[Number(d)] ?? d);
 
 export const orderSchema = z.object({
   num: z.string().trim().min(1, "NUM is required").max(3, "NUM can be at most 3 digits").regex(/^[0-9٠-٩]+$/, "NUM must be digits"),
