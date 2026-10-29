@@ -7,10 +7,12 @@ export type Slot = (typeof SLOTS)[number];
 export const PATCH_IDS = [
   "num_en",
   "num_ar",
-  "em",
+  "initials",
   "name_ar",
   "quote",
   "flag",
+  "n07",
+  "n08",
   "n09",
   "redbull",
   "bmw",
@@ -21,12 +23,14 @@ export type PatchId = (typeof PATCH_IDS)[number];
 
 export const PATCH_LABELS: Record<PatchId, string> = {
   num_en: "Number (27)",
-  num_ar: "Number (٢٧)",
-  em: "EM logo",
+  num_ar: "Number (27)",
+  initials: "Initials",
   name_ar: "Name",
   quote: "Your quote",
-  flag: "Syria flag map",
-  n09: "09",
+  flag: "Country flag",
+  n07: "07",
+  n08: "08",
+  n09: "Sleeve number",
   redbull: "Red Bull",
   bmw: "BMW",
   horse: "Horse",
@@ -63,6 +67,9 @@ export const toArabicDigits = (s: string) => s.replace(/[0-9]/g, (d) => AR_DIGIT
 
 export const orderSchema = z.object({
   num: z.string().trim().min(1, "NUM is required").max(3, "NUM can be at most 3 digits").regex(/^[0-9٠-٩]+$/, "NUM must be digits"),
+  initials: z.string().trim().min(1, "Initials are required").max(2, "Use no more than 2 initials").regex(/^[\p{L}]{1,2}$/u, "Initials must be 1 or 2 letters"),
+  country: z.string().regex(/^[A-Z]{2}$/, "Choose a country"),
+  sleeveNumber: z.enum(["07", "08", "09"]),
   size: z.enum(SIZES, { message: "Pick a SIZE" }),
   name: z.string().trim().min(1, "NAME is required").max(30, "NAME must be 30 characters or less"),
   patchNum: z.number().int().min(1, "PATCH NUM must be 1-6").max(6, "PATCH NUM must be 1-6"),

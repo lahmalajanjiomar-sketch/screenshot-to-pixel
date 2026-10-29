@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { adminFileLinks, adminListOrders } from "@/lib/orders.functions";
 import { PATCH_LABELS, SIZES, type PatchId } from "@/lib/jacket";
+import { countryByCode } from "@/lib/countries";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -123,7 +124,10 @@ function AdminPage() {
               <TableHead>#</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Name</TableHead>
+              <TableHead>Initials</TableHead>
               <TableHead>NUM</TableHead>
+              <TableHead>Country</TableHead>
+              <TableHead>Sleeve #</TableHead>
               <TableHead>Size</TableHead>
               <TableHead>Grade</TableHead>
               <TableHead>Patches</TableHead>
@@ -133,9 +137,9 @@ function AdminPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={9} className="py-10 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={12} className="py-10 text-center"><Loader2 className="mx-auto animate-spin" /></TableRow>
             ) : orders.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="py-10 text-center text-muted-foreground">No orders yet.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={12} className="py-10 text-center text-muted-foreground">No orders yet.</TableCell></TableRow>
             ) : (
               orders.map((o) => {
                 const patches = (o.patches as { slot: string; patch: PatchId }[]) ?? [];
@@ -145,7 +149,10 @@ function AdminPage() {
                     <TableCell className="font-varsity">{o.order_number}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{new Date(o.created_at).toLocaleDateString()}</TableCell>
                     <TableCell dir="auto">{o.name}</TableCell>
+                    <TableCell className="font-varsity">{o.initials}</TableCell>
                     <TableCell>{o.num} <span className="text-xs text-muted-foreground">({o.back_style})</span></TableCell>
+                    <TableCell>{countryByCode(o.country).flag} {countryByCode(o.country).name}</TableCell>
+                    <TableCell className="font-varsity">{o.sleeve_number}</TableCell>
                     <TableCell>{o.size}</TableCell>
                     <TableCell>{o.grade}</TableCell>
                     <TableCell className="max-w-56 text-xs">{patches.map((p) => `${p.slot}: ${PATCH_LABELS[p.patch] ?? p.patch}`).join(", ") || "—"} <span className="text-muted-foreground">/ {o.patch_num}</span></TableCell>

@@ -83,7 +83,7 @@ export function JacketView({
         {view === "front" ? <Front /> : <Back />}
         {view === "front" ? (
           <div className="absolute left-[56%] top-[20%] h-[16%] w-[16%]" style={{ fontSize: "4cqw" }}>
-            <PatchArt id="em" ctx={state} onJacket />
+            <PatchArt id="initials" ctx={state} onJacket />
           </div>
         ) : (
           <>

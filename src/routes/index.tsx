@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { JacketView, type ViewKey } from "@/components/jacket/JacketViews";
+import { Jacket3D } from "@/components/jacket/Jacket3D";
+import type { ViewKey } from "@/components/jacket/JacketViews";
 import { PatchArt } from "@/components/jacket/PatchArt";
 import {
   ACCEPTED_UPLOADS,
@@ -30,6 +31,7 @@ import { fileToPdf, buildSummaryPdf } from "@/lib/pdf";
 import { createOrder, finalizeOrder } from "@/lib/orders.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { COUNTRIES, countryByCode } from "@/lib/countries";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -47,7 +49,7 @@ export const Route = createFileRoute("/")({
 
 type Upload = { id: string; name: string; thumb: string | null; isPdf: boolean; pdf: Blob | null; status: "converting" | "ready" | "error" };
 
-const TILE_ORDER: PatchId[] = ["num_en", "num_ar", "em", "name_ar", "quote", "flag", "n09", "redbull", "bmw", "custom", "horse"];
+const TILE_ORDER: PatchId[] = ["num_en", "num_ar", "initials", "name_ar", "quote", "flag", "n09", "redbull", "bmw", "custom", "horse"];
 const VIEWS: ViewKey[] = ["front", "back", "left", "right"];
 
 const isDisplayableImage = (f: File) => /^image\/(png|jpe?g|webp|gif)$/.test(f.type);
@@ -56,13 +58,17 @@ function OrderPage() {
   const [lang, setLang] = useState<Lang>("en");
   const t = dict[lang];
   const [num, setNum] = useState("");
+  const [initials, setInitials] = useState("");
+  const [country, setCountry] = useState("SY");
+  const [countryQuery, setCountryQuery] = useState("");
+  const [sleeveNumber, setSleeveNumber] = useState<"07" | "08" | "09">("09");
   const [size, setSize] = useState<string>("");
   const [name, setName] = useState("");
   const [patchNum, setPatchNum] = useState(6);
   const [grade, setGrade] = useState("");
   const [note, setNote] = useState("");
   const [quote, setQuote] = useState("");
-  const [backStyle, setBackStyle] = useState<"en" | "ar">("en");
+  const backStyle = "en" as const;
   const [slots, setSlots] = useState<SlotMap>(emptySlots);
   const [selected, setSelected] = useState<PatchId | null>(null);
   const [customUrl, setCustomUrl] = useState<string | null>(null);
@@ -75,9 +81,7 @@ function OrderPage() {
   const customInput = useRef<HTMLInputElement>(null);
   const filesInput = useRef<HTMLInputElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const swipeRef = useRef<HTMLDivElement>(null);
-
-  const state = useMemo(() => ({ num, name, quote, customUrl, backStyle, slots }), [num, name, quote, customUrl, backStyle, slots]);
+  const state = useMemo(() => ({ num, name, initials, quote, customUrl, backStyle, slots, country, sleeveNumber }), [num, name, initials, quote, customUrl, backStyle, slots, country, sleeveNumber]);
   const placed = countPlaced(slots);
 
   useEffect(() => {
@@ -107,7 +111,10 @@ function OrderPage() {
   };
 
   const addFiles = async (files: FileList | File[]) => {
-    const list = Array.from(files).slice(0, 15 - uploads.length);
+    const candidates = Array.from(files);
+    const unsupported = candidates.filter((f) => !(/^image\/(png|jpe?g|webp|gif|heic|heif)$/.test(f.type) || f.type === "application/pdf" || /\.(png|jpe?g|webp|gif|heic|heif|pdf)$/i.test(f.name)));
+    if (unsupported.length) toast.error(`Unsupported file type: ${unsupported.map((f) => f.name).join(", ")}`);
+    const list = candidates.filter((f) => !unsupported.includes(f)).slice(0, Math.max(0, 15 - uploads.length));
     for (const f of list) {
       const id = crypto.randomUUID();
       const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
@@ -140,7 +147,7 @@ function OrderPage() {
   };
 
   const submit = async () => {
-    const parsed = orderSchema.safeParse({ num, size, name, patchNum, grade, note, backStyle, quote });
+    const parsed = orderSchema.safeParse({ num, initials, country, sleeveNumber, size, name, patchNum, grade, note, backStyle, quote });
     if (!parsed.success) {
       const errs: Record<string, string> = {};
       for (const i of parsed.error.issues) errs[String(i.path[0])] ??= i.message;
@@ -151,6 +158,10 @@ function OrderPage() {
     setErrors({});
     if (uploads.some((u) => u.status === "converting")) {
       toast("Please wait — files are still converting.");
+      return;
+    }
+    if (uploads.some((u) => u.status === "error")) {
+      toast.error("Remove files that failed conversion before sending the order.");
       return;
     }
     setSubmitting(true);
@@ -189,6 +200,10 @@ function OrderPage() {
   const reset = () => {
     setDone(null);
     setNum("");
+    setInitials("");
+    setCountry("SY");
+    setCountryQuery("");
+    setSleeveNumber("09");
     setSize("");
     setName("");
     setPatchNum(6);
@@ -200,12 +215,6 @@ function OrderPage() {
     setCustomUrl(null);
     setUploads([]);
     setSheetOrder(null);
-  };
-
-  const scrollToView = (v: ViewKey) => {
-    setTab(v);
-    const el = swipeRef.current;
-    if (el) el.scrollTo({ left: VIEWS.indexOf(v) * el.clientWidth * (lang === "ar" ? -1 : 1), behavior: "smooth" });
   };
 
   const viewLabel = (v: ViewKey) => t[v];
@@ -249,45 +258,16 @@ function OrderPage() {
       <div className="mx-auto mt-6 grid max-w-6xl gap-8 px-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {/* PREVIEW */}
         <section className="lg:sticky lg:top-6 lg:self-start">
-          {/* mobile tabs + swipe */}
-          <div className="lg:hidden">
-            <div className="grid grid-cols-4 gap-1 rounded-xl bg-secondary p-1">
+          <div className="overflow-hidden rounded-3xl border bg-card shadow-xl">
+            <div className="flex aspect-[4/3] items-center justify-center bg-[#f7f6f3]">
+              <Jacket3D view={tab} state={state} />
+            </div>
+            <div className="grid grid-cols-4 gap-2 p-3">
               {VIEWS.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => scrollToView(v)}
-                  className={cn("rounded-lg px-1 py-2 text-xs font-semibold transition-colors", tab === v ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
-                >
-                  {viewLabel(v)}
-                </button>
+                <button key={v} type="button" onClick={() => setTab(v)} className={cn("rounded-lg border px-2 py-2 text-xs font-semibold", tab === v ? "border-primary bg-primary text-primary-foreground" : "bg-secondary")}>{viewLabel(v)}</button>
               ))}
             </div>
-            <div
-              ref={swipeRef}
-              onScroll={(e) => {
-                const el = e.currentTarget;
-                const i = Math.round(Math.abs(el.scrollLeft) / el.clientWidth);
-                if (VIEWS[i] && VIEWS[i] !== tab) setTab(VIEWS[i]);
-              }}
-              className="mt-3 flex snap-x snap-mandatory overflow-x-auto rounded-2xl bg-card [scrollbar-width:none]"
-            >
-              {VIEWS.map((v) => (
-                <div key={v} className="flex aspect-square w-full shrink-0 snap-center items-center justify-center p-6">
-                  <JacketView view={v} state={state} onSlotClick={v === "left" || v === "right" ? placeAt : undefined} className={v === "left" || v === "right" ? "h-full w-auto max-w-none" : ""} />
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* desktop stacked */}
-          <div className="hidden gap-4 lg:grid lg:grid-cols-2">
-            {VIEWS.map((v) => (
-              <div key={v} className="rounded-2xl border bg-card p-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">{viewLabel(v)}</p>
-                <div className="flex aspect-square items-center justify-center">
-                  <JacketView view={v} state={state} onSlotClick={v === "left" || v === "right" ? placeAt : undefined} className={v === "left" || v === "right" ? "h-full w-auto max-w-none" : ""} />
-                </div>
-              </div>
-            ))}
+            <p className="pb-3 text-center text-xs text-muted-foreground">Drag to rotate · scroll to zoom</p>
           </div>
         </section>
 
@@ -309,6 +289,11 @@ function OrderPage() {
                   aria-label={PATCH_LABELS[id]}
                   aria-pressed={selected === id}
                   onClick={() => {
+                    if (!["redbull", "bmw", "custom", "horse"].includes(id)) {
+                      const fieldId: Partial<Record<PatchId, string>> = { initials: "initials", name_ar: "name", quote: "quote", flag: "country-search", n09: "sleeve-number" };
+                      if (fieldId[id]) document.getElementById(fieldId[id]!)?.focus();
+                      return;
+                    }
                     if (id === "custom" && !customUrl) {
                       customInput.current?.click();
                       return;
@@ -401,10 +386,39 @@ function OrderPage() {
                 <Err k="size" />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="initials">Initials *</Label>
+                <Input id="initials" placeholder="EM" maxLength={2} value={initials} onChange={(e) => setInitials(e.target.value.replace(/[^\p{L}]/gu, "").slice(0, 2).toUpperCase())} className={cn("mt-1.5 font-varsity text-lg", field("initials"))} />
+                <Err k="initials" />
+              </div>
+              <div>
+                <Label htmlFor="sleeve-number">Sleeve number *</Label>
+                <Select value={sleeveNumber} onValueChange={(v) => setSleeveNumber(v as "07" | "08" | "09")}>
+                  <SelectTrigger id="sleeve-number" className="mt-1.5 w-full font-varsity"><SelectValue /></SelectTrigger>
+                  <SelectContent>{(["07", "08", "09"] as const).map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
+                </Select>
+                <Err k="sleeveNumber" />
+              </div>
+            </div>
             <div>
               <Label htmlFor="name">{t.name} *</Label>
               <Input id="name" dir="auto" placeholder="AAAAAA / الاسم" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} className={cn("mt-1.5", field("name"))} />
               <Err k="name" />
+            </div>
+            <div>
+              <Label htmlFor="country-search">Country *</Label>
+              <div className="relative mt-1.5">
+                <Input id="country-search" list="country-options" value={countryQuery || countryByCode(country).name} onChange={(e) => {
+                  const query = e.target.value;
+                  setCountryQuery(query);
+                  const found = COUNTRIES.find((item) => item.name.toLowerCase() === query.trim().toLowerCase() || item.code.toLowerCase() === query.trim().toLowerCase());
+                  if (found) setCountry(found.code);
+                }} onBlur={() => setCountryQuery("")} className={cn("pe-12", field("country"))} placeholder="Search countries" />
+                <span className="absolute end-3 top-1/2 -translate-y-1/2 text-2xl">{countryByCode(country).flag}</span>
+                <datalist id="country-options">{COUNTRIES.map((item) => <option key={item.code} value={item.name}>{item.flag} {item.name}</option>)}</datalist>
+              </div>
+              <Err k="country" />
             </div>
             <div>
               <Label>{t.patchNum} *</Label>
@@ -427,27 +441,10 @@ function OrderPage() {
               <Input id="grade" placeholder="12A" maxLength={10} value={grade} onChange={(e) => setGrade(e.target.value.toUpperCase())} className={cn("mt-1.5", field("grade"))} />
               <Err k="grade" />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Label>{t.backNumber}</Label>
-                <div className="mt-1.5 grid grid-cols-2 gap-2">
-                  {(["en", "ar"] as const).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setBackStyle(s)}
-                      className={cn("h-11 rounded-xl border text-xl transition-colors", s === "en" ? "font-varsity" : "font-arabic", backStyle === s ? "border-primary bg-primary text-primary-foreground" : "bg-secondary")}
-                    >
-                      {s === "en" ? "27" : "٢٧"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
+            <div>
                 <Label htmlFor="quote">{t.quote}</Label>
                 <Input id="quote" dir="auto" placeholder="your quote" maxLength={40} value={quote} onChange={(e) => setQuote(e.target.value)} className={cn("mt-1.5 font-quote italic", field("quote"))} />
                 <Err k="quote" />
-              </div>
             </div>
             <div>
               <Label htmlFor="note">{t.note} <span className="text-muted-foreground">({t.optional})</span></Label>
@@ -523,7 +520,7 @@ function OrderPage() {
           <div className="mt-6 grid grid-cols-4 items-center gap-4">
             {VIEWS.map((v) => (
               <div key={v} className="text-center">
-                <div className="flex h-56 items-center justify-center"><JacketView view={v} state={state} className={v === "left" || v === "right" ? "h-full w-auto max-w-none" : ""} /></div>
+                <div className="flex h-56 items-center justify-center rounded-xl bg-[#f7f6f3]"><Jacket3D view={v} state={state} /></div>
                 <p className="mt-2 text-sm font-semibold uppercase tracking-widest">{dict.en[v]}</p>
               </div>
             ))}
@@ -534,10 +531,12 @@ function OrderPage() {
                 {[
                   ["NUM", num],
                   ["SIZE", size],
+                  ["INITIALS", initials],
                   ["NAME", name],
+                  ["COUNTRY", `${countryByCode(country).flag} ${countryByCode(country).name}`],
+                  ["SLEEVE NUMBER", sleeveNumber],
                   ["PATCH NUM", String(patchNum)],
                   ["GRADE", grade],
-                  ["BACK STYLE", backStyle === "en" ? "English (27)" : "Arabic (٢٧)"],
                   ["QUOTE", quote || "—"],
                   ["NOTE", note || "—"],
                 ].map(([k, v]) => (

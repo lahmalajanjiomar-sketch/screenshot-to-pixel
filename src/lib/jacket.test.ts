@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canPlace, emptySlots, orderSchema, trimToLimit, countPlaced, toArabicDigits } from "./jacket";
 
-const valid = { num: "01", size: "M", name: "AAAAAA", patchNum: 6, grade: "12A", note: "", backStyle: "en", quote: "" };
+const valid = { num: "01", initials: "EM", country: "SY", sleeveNumber: "09" as const, size: "M", name: "AAAAAA", patchNum: 6, grade: "12A", note: "", backStyle: "en" as const, quote: "" };
 
 describe("order rules", () => {
   it("accepts a complete order", () => {
@@ -16,6 +16,16 @@ describe("order rules", () => {
   });
   it("accepts Arabic names", () => {
     expect(orderSchema.safeParse({ ...valid, name: "محمد" }).success).toBe(true);
+  });
+  it("limits initials to one or two letters", () => {
+    expect(orderSchema.safeParse({ ...valid, initials: "A" }).success).toBe(true);
+    expect(orderSchema.safeParse({ ...valid, initials: "ABC" }).success).toBe(false);
+    expect(orderSchema.safeParse({ ...valid, initials: "A1" }).success).toBe(false);
+  });
+  it("accepts only supported countries and sleeve numbers", () => {
+    expect(orderSchema.safeParse({ ...valid, country: "US", sleeveNumber: "07" }).success).toBe(true);
+    expect(orderSchema.safeParse({ ...valid, country: "USA" }).success).toBe(false);
+    expect(orderSchema.safeParse({ ...valid, sleeveNumber: "10" }).success).toBe(false);
   });
   it("blocks placing more patches than PATCH NUM", () => {
     const s = { ...emptySlots(), L1: "bmw" as const, L2: "horse" as const };

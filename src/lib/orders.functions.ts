@@ -24,6 +24,9 @@ export const createOrder = createServerFn({ method: "POST" })
       .from("orders")
       .insert({
         num: data.num,
+        initials: data.initials,
+        country: data.country,
+        sleeve_number: data.sleeveNumber,
         size: data.size,
         name: data.name,
         patch_num: data.patchNum,

@@ -21,6 +21,9 @@ export type Database = {
           files: Json
           grade: string
           id: string
+          initials: string
+          country: string
+          sleeve_number: string
           name: string
           note: string | null
           num: string
@@ -37,6 +40,9 @@ export type Database = {
           files?: Json
           grade: string
           id?: string
+          initials: string
+          country: string
+          sleeve_number: string
           name: string
           note?: string | null
           num: string
@@ -53,6 +59,9 @@ export type Database = {
           files?: Json
           grade?: string
           id?: string
+          initials?: string
+          country?: string
+          sleeve_number?: string
           name?: string
           note?: string | null
           num?: string
