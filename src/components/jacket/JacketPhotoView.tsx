@@ -50,7 +50,7 @@ export function JacketPhotoView({
 }) {
   return (
     <div className={cn("relative mx-auto aspect-[4/5] w-full max-w-xl overflow-hidden rounded-xl bg-[#f7f6f3]", className)}>
-      <img src={`/jacket/${view}.webp`} alt={`${view} view of the clean varsity jacket base`} className="absolute inset-0 h-full w-full object-contain" />
+      <img src={`/jacket/${view}.png`} alt={`${view} view of the clean varsity jacket base`} className="absolute inset-0 h-full w-full object-contain" />
 
       {view === "front" && (
         <div dir="auto" className="absolute left-[66%] top-[30%] flex h-[13%] w-[21%] items-center justify-center overflow-hidden font-varsity text-[clamp(1rem,4vw,2.2rem)] text-[#f4f0e7]">
