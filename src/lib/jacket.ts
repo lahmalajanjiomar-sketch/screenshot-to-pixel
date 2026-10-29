@@ -47,9 +47,6 @@ export function canPlace(slots: SlotMap, slot: Slot, limit: number) {
 /** When the limit drops, remove patches from the last slots until it fits. */
 export function trimToLimit(slots: SlotMap, limit: number): SlotMap {
   const next = { ...slots };
-  const filled = SLOTS.filter((s) => next[s]);
-  for (const s of filled.slice(Math.max(0, limit)).reverse()) next[s] = null;
-  // remove from end of list
   let over = countPlaced(next) - limit;
   for (const s of [...SLOTS].reverse()) {
     if (over <= 0) break;
